@@ -49,6 +49,21 @@ func New(name, version string, opts ...Option) *Plugin {
 			cfg.port = p
 		}
 	}
+	if v := os.Getenv("NATS_AUTH_TOKEN"); v != "" {
+		cfg.natsAuthToken = v
+	}
+	if v := os.Getenv("NATS_CREDENTIALS_FILE"); v != "" {
+		cfg.natsCredsFile = v
+	}
+	if v := os.Getenv("NATS_NKEY_SEED"); v != "" {
+		cfg.natsNKeySeed = v
+	}
+	if v := os.Getenv("BACKEND_URL"); v != "" {
+		cfg.backendURL = v
+	}
+	if v := os.Getenv("SERVICE_TOKEN"); v != "" {
+		cfg.serviceToken = v
+	}
 
 	for _, opt := range opts {
 		opt(&cfg)
@@ -66,6 +81,15 @@ func New(name, version string, opts ...Option) *Plugin {
 // starts the HTTP server, and blocks until SIGTERM/SIGINT.
 func (p *Plugin) Run() error {
 	slog.Info("starting plugin", "name", p.name, "version", p.version, "port", p.config.port)
+
+	// Bootstrap NATS credentials if no auth is configured and backend is available.
+	// This handles JWT mode where plugins need scoped credentials issued dynamically.
+	if !p.hasNATSAuth() && p.config.backendURL != "" && p.config.serviceToken != "" {
+		if err := p.bootstrapNATSCredentials(); err != nil {
+			slog.Warn("credential bootstrap failed, connecting without auth",
+				"plugin", p.name, "error", err)
+		}
+	}
 
 	// Connect to NATS
 	if err := p.connectNATS(); err != nil {

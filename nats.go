@@ -10,13 +10,35 @@ import (
 )
 
 // connectNATS establishes a NATS connection with retry and reconnect support.
+// Auth priority: creds file > nkey seed > token > anonymous.
 func (p *Plugin) connectNATS() error {
-	nc, err := nats.Connect(p.config.natsURL,
+	opts := []nats.Option{
 		nats.Name(fmt.Sprintf("plugin-%s", p.name)),
 		nats.RetryOnFailedConnect(true),
 		nats.MaxReconnects(-1),
-		nats.ReconnectWait(2*time.Second),
-	)
+		nats.ReconnectWait(2 * time.Second),
+	}
+
+	// Auth priority: creds file > nkey seed > token > anonymous
+	switch {
+	case p.config.natsCredsFile != "":
+		opts = append(opts, nats.UserCredentials(p.config.natsCredsFile))
+		slog.Info("NATS auth: credentials file", "plugin", p.name, "file", p.config.natsCredsFile)
+	case p.config.natsNKeySeed != "":
+		nkeyOpt, err := nats.NkeyOptionFromSeed(p.config.natsNKeySeed)
+		if err != nil {
+			return fmt.Errorf("invalid NKey seed: %w", err)
+		}
+		opts = append(opts, nkeyOpt)
+		slog.Info("NATS auth: NKey", "plugin", p.name)
+	case p.config.natsAuthToken != "":
+		opts = append(opts, nats.Token(p.config.natsAuthToken))
+		slog.Info("NATS auth: token", "plugin", p.name)
+	default:
+		slog.Info("NATS auth: anonymous", "plugin", p.name)
+	}
+
+	nc, err := nats.Connect(p.config.natsURL, opts...)
 	if err != nil {
 		return fmt.Errorf("connecting to NATS at %s: %w", p.config.natsURL, err)
 	}

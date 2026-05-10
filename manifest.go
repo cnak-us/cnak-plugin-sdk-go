@@ -15,25 +15,41 @@ type PluginMetadata struct {
 	Author      string            `json:"author,omitempty"`
 	Description string            `json:"description,omitempty"`
 	Labels      map[string]string `json:"labels,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
 // PluginSpec contains the plugin configuration.
 type PluginSpec struct {
-	MinCnakVersion string            `json:"minCnakVersion,omitempty"`
-	Permissions    PluginPermissions `json:"permissions"`
-	Backend        PluginBackend     `json:"backend"`
-	Frontend       PluginFrontend    `json:"frontend"`
+	MinCnakVersion string             `json:"minCnakVersion,omitempty"`
+	Permissions    PluginPermissions  `json:"permissions"`
+	Backend        PluginBackend      `json:"backend"`
+	Frontend       PluginFrontend     `json:"frontend"`
+	Resources      PluginResourceSpec `json:"resources,omitempty"`
+	Signing        PluginSigningSpec  `json:"signing,omitempty"`
 }
 
-// PluginPermissions declares required permissions.
+// PluginPermissions declares required and optional permissions.
 type PluginPermissions struct {
 	Required []string `json:"required,omitempty"`
+	Optional []string `json:"optional,omitempty"`
 }
 
 // PluginBackend describes the backend sidecar.
 type PluginBackend struct {
+	Binary     string `json:"binary,omitempty"`
 	Port       int    `json:"port,omitempty"`
 	HealthPath string `json:"healthPath,omitempty"`
+}
+
+// PluginResourceSpec declares resource constraints. Mirrors backend's PluginResourceSpec.
+type PluginResourceSpec struct {
+	MaxMemoryMB   int  `json:"maxMemoryMB,omitempty"`
+	NetworkEgress bool `json:"networkEgress"`
+}
+
+// PluginSigningSpec contains code signing configuration. Mirrors backend's PluginSigningSpec.
+type PluginSigningSpec struct {
+	PublicKey string `json:"publicKey,omitempty"`
 }
 
 // PluginFrontend describes frontend extension points.
@@ -42,6 +58,7 @@ type PluginFrontend struct {
 	Sidebar             []PluginSidebarItem        `json:"sidebar,omitempty"`
 	MapClickHandlers    []PluginMapClickHandler    `json:"mapClickHandlers,omitempty"`
 	TrackDetailSections []PluginTrackDetailSection `json:"trackDetailSections,omitempty"`
+	DockedPanel         *PluginDockedPanel         `json:"dockedPanel,omitempty"`
 }
 
 // PluginSidebarItem describes a sidebar navigation entry.
@@ -63,6 +80,17 @@ type PluginTrackDetailSection struct {
 	ID string `json:"id"`
 }
 
+// PluginDockedPanel describes a header-toggleable docked side panel.
+// A button is added to the CNAK header; clicking it opens the plugin
+// bundle in a resizable rail (similar to the AI advisor).
+type PluginDockedPanel struct {
+	ID              string `json:"id"`
+	Label           string `json:"label"`
+	Icon            string `json:"icon,omitempty"`
+	DefaultPosition string `json:"defaultPosition,omitempty"` // "left" | "right" (default "right")
+	BadgePath       string `json:"badgePath,omitempty"`       // GET path under plugin's API returning { unreadCount: int }
+}
+
 // PluginRegistration is the message published to cnak.plugin.register.
 type PluginRegistration struct {
 	Manifest PluginManifest `json:"manifest"`
@@ -75,6 +103,7 @@ type manifestBuilder struct {
 	mapClickHandlers    []PluginMapClickHandler
 	trackDetailSections []PluginTrackDetailSection
 	assets              []string
+	dockedPanel         *PluginDockedPanel
 }
 
 // Sidebar adds a sidebar navigation entry to the plugin manifest.
@@ -107,8 +136,73 @@ func (p *Plugin) FrontendAssets(files ...string) *Plugin {
 	return p
 }
 
+// DockedPanel registers the plugin as a header-toggleable docked side panel.
+// Pass id, label, and icon name (resolved on the frontend through CNAK's
+// PLUGIN_ICON_MAP). Default position is "right" — call WithDockedPanelPosition
+// to override. Call WithDockedPanelBadge to declare a polled unread-count
+// endpoint on the plugin's own API namespace.
+//
+//	sdk.New("signal-bridge", "0.1.0").
+//	    DockedPanel("signal-bridge", "Signal", "SiSignal").
+//	    WithDockedPanelBadge("/me")
+func (p *Plugin) DockedPanel(id, label, icon string) *Plugin {
+	if p.manifest.dockedPanel == nil {
+		p.manifest.dockedPanel = &PluginDockedPanel{}
+	}
+	p.manifest.dockedPanel.ID = id
+	p.manifest.dockedPanel.Label = label
+	p.manifest.dockedPanel.Icon = icon
+	return p
+}
+
+// WithDockedPanelPosition sets the default rail side ("left" or "right").
+// Falls back to "right" when unset.
+func (p *Plugin) WithDockedPanelPosition(position string) *Plugin {
+	if p.manifest.dockedPanel == nil {
+		p.manifest.dockedPanel = &PluginDockedPanel{}
+	}
+	p.manifest.dockedPanel.DefaultPosition = position
+	return p
+}
+
+// WithDockedPanelBadge declares a GET path under the plugin's API namespace
+// (e.g. "/me") that the CNAK header polls every 30s for an unread count.
+// Response shape: { "unreadCount": <int> }.
+func (p *Plugin) WithDockedPanelBadge(path string) *Plugin {
+	if p.manifest.dockedPanel == nil {
+		p.manifest.dockedPanel = &PluginDockedPanel{}
+	}
+	p.manifest.dockedPanel.BadgePath = path
+	return p
+}
+
 // BuildManifest constructs the full PluginManifest from config and builder calls.
 func (p *Plugin) BuildManifest() PluginManifest {
+	spec := PluginSpec{
+		MinCnakVersion: p.config.minCnakVersion,
+		Permissions: PluginPermissions{
+			Required: p.config.permissions,
+			Optional: p.config.optionalPermissions,
+		},
+		Backend: PluginBackend{
+			Binary:     p.config.binary,
+			Port:       p.config.port,
+			HealthPath: "/health",
+		},
+		Frontend: PluginFrontend{
+			Assets:              p.manifest.assets,
+			Sidebar:             p.manifest.sidebar,
+			MapClickHandlers:    p.manifest.mapClickHandlers,
+			TrackDetailSections: p.manifest.trackDetailSections,
+			DockedPanel:         p.manifest.dockedPanel,
+		},
+	}
+	if p.config.resourcesSet {
+		spec.Resources = PluginResourceSpec{
+			MaxMemoryMB:   p.config.maxMemoryMB,
+			NetworkEgress: p.config.networkEgress,
+		}
+	}
 	return PluginManifest{
 		APIVersion: "cnak.us/v1alpha1",
 		Kind:       "Plugin",
@@ -118,22 +212,8 @@ func (p *Plugin) BuildManifest() PluginManifest {
 			Author:      p.config.author,
 			Description: p.config.description,
 			Labels:      p.config.labels,
+			Annotations: p.config.annotations,
 		},
-		Spec: PluginSpec{
-			MinCnakVersion: p.config.minCnakVersion,
-			Permissions: PluginPermissions{
-				Required: p.config.permissions,
-			},
-			Backend: PluginBackend{
-				Port:       p.config.port,
-				HealthPath: "/health",
-			},
-			Frontend: PluginFrontend{
-				Assets:              p.manifest.assets,
-				Sidebar:             p.manifest.sidebar,
-				MapClickHandlers:    p.manifest.mapClickHandlers,
-				TrackDetailSections: p.manifest.trackDetailSections,
-			},
-		},
+		Spec: spec,
 	}
 }
