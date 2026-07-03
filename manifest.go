@@ -18,6 +18,21 @@ type PluginMetadata struct {
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
+// RestartPolicy controls supervisor behaviour when a subprocess plugin exits.
+// Mirrors the backend's RestartPolicy enum. Sidecar plugins (Docker/k8s
+// owned) treat this field as advisory only — the container runtime is
+// authoritative for their lifecycle.
+type RestartPolicy string
+
+const (
+	// RestartOnFailure (default when empty) restarts only on non-zero exit.
+	RestartOnFailure RestartPolicy = "OnFailure"
+	// RestartAlways restarts after every exit.
+	RestartAlways RestartPolicy = "Always"
+	// RestartNever disables the supervisor.
+	RestartNever RestartPolicy = "Never"
+)
+
 // PluginSpec contains the plugin configuration.
 type PluginSpec struct {
 	MinCnakVersion string             `json:"minCnakVersion,omitempty"`
@@ -26,6 +41,9 @@ type PluginSpec struct {
 	Frontend       PluginFrontend     `json:"frontend"`
 	Resources      PluginResourceSpec `json:"resources,omitempty"`
 	Signing        PluginSigningSpec  `json:"signing,omitempty"`
+	// RestartPolicy is additive-in-v1alpha1: omitted manifests inherit the
+	// backend default (OnFailure). Builder method: WithRestartPolicy.
+	RestartPolicy RestartPolicy `json:"restartPolicy,omitempty"`
 }
 
 // PluginPermissions declares required and optional permissions.
@@ -196,6 +214,7 @@ func (p *Plugin) BuildManifest() PluginManifest {
 			TrackDetailSections: p.manifest.trackDetailSections,
 			DockedPanel:         p.manifest.dockedPanel,
 		},
+		RestartPolicy: p.config.restartPolicy,
 	}
 	if p.config.resourcesSet {
 		spec.Resources = PluginResourceSpec{

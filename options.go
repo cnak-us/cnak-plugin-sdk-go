@@ -4,25 +4,26 @@ package sdk
 type Option func(*pluginConfig)
 
 type pluginConfig struct {
-	port               int
-	natsURL            string
-	natsAuthToken      string
-	natsCredsFile      string
-	natsNKeySeed       string
-	author             string
-	description        string
-	permissions        []string
+	port                int
+	natsURL             string
+	natsAuthToken       string
+	natsCredsFile       string
+	natsNKeySeed        string
+	author              string
+	description         string
+	permissions         []string
 	optionalPermissions []string
-	minCnakVersion     string
-	assetsDir          string
-	labels             map[string]string
-	annotations        map[string]string
-	backendURL         string
-	serviceToken       string
-	binary             string
-	maxMemoryMB        int
-	networkEgress      bool
-	resourcesSet       bool
+	minCnakVersion      string
+	assetsDir           string
+	labels              map[string]string
+	annotations         map[string]string
+	backendURL          string
+	serviceToken        string
+	binary              string
+	maxMemoryMB         int
+	networkEgress       bool
+	resourcesSet        bool
+	restartPolicy       RestartPolicy
 }
 
 func defaultConfig() pluginConfig {
@@ -118,4 +119,12 @@ func WithNATSNKeySeed(seed string) Option {
 // WithBackendURL sets the backend URL for credential bootstrapping (default from BACKEND_URL env).
 func WithBackendURL(url string) Option {
 	return func(c *pluginConfig) { c.backendURL = url }
+}
+
+// WithRestartPolicy sets the supervisor restart policy in the manifest.
+// Valid values: RestartOnFailure (default when empty), RestartAlways,
+// RestartNever. Advisory for sidecar plugins — Docker/k8s own their
+// lifecycle there and the backend supervisor is a no-op.
+func WithRestartPolicy(policy RestartPolicy) Option {
+	return func(c *pluginConfig) { c.restartPolicy = policy }
 }
