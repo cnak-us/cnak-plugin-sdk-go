@@ -113,6 +113,10 @@ type PluginDockedPanel struct {
 type PluginRegistration struct {
 	Manifest PluginManifest `json:"manifest"`
 	URL      string         `json:"url"`
+	// Signature is a base64 Ed25519 signature over this plugin's ID, version
+	// and declared permissions. Empty unless a signing key is configured; a
+	// backend with PLUGIN_TRUSTED_KEYS set rejects registrations without it.
+	Signature string `json:"signature,omitempty"`
 }
 
 // manifestBuilder accumulates frontend extension points.

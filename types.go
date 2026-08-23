@@ -1,4 +1,3 @@
-// Package sdk provides a Go SDK for building CNAK plugins.
 package sdk
 
 import "time"

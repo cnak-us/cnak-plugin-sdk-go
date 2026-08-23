@@ -40,10 +40,7 @@ func (p *Plugin) registerOverHTTP() error {
 		return fmt.Errorf("BACKEND_URL and SERVICE_TOKEN required for HTTP registration")
 	}
 
-	body, err := json.Marshal(PluginRegistration{
-		Manifest: p.BuildManifest(),
-		URL:      p.pluginURL(),
-	})
+	body, err := json.Marshal(p.buildRegistration())
 	if err != nil {
 		return fmt.Errorf("marshalling registration: %w", err)
 	}

@@ -1,5 +1,7 @@
 package sdk
 
+import "crypto/ed25519"
+
 // Option configures a Plugin.
 type Option func(*pluginConfig)
 
@@ -24,6 +26,7 @@ type pluginConfig struct {
 	networkEgress       bool
 	resourcesSet        bool
 	restartPolicy       RestartPolicy
+	signingKey          ed25519.PrivateKey
 }
 
 func defaultConfig() pluginConfig {
@@ -119,6 +122,25 @@ func WithNATSNKeySeed(seed string) Option {
 // WithBackendURL sets the backend URL for credential bootstrapping (default from BACKEND_URL env).
 func WithBackendURL(url string) Option {
 	return func(c *pluginConfig) { c.backendURL = url }
+}
+
+// WithSigningKey sets the publisher key this plugin signs its registration
+// with — a base64 Ed25519 private key or 32-byte seed. Defaults to
+// PLUGIN_SIGNING_KEY from the environment.
+//
+// Required only against a backend configured with PLUGIN_TRUSTED_KEYS, which
+// rejects registrations that are unsigned or signed by an unknown publisher.
+// An invalid key is a startup panic rather than a silent downgrade to
+// unsigned: a plugin that believes it is signed and is not would be rejected
+// later, somewhere far less obvious.
+func WithSigningKey(encoded string) Option {
+	return func(c *pluginConfig) {
+		key, err := parseSigningKey(encoded)
+		if err != nil {
+			panic("sdk: WithSigningKey: " + err.Error())
+		}
+		c.signingKey = key
+	}
 }
 
 // WithRestartPolicy sets the supervisor restart policy in the manifest.

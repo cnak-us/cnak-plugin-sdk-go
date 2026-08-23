@@ -64,6 +64,13 @@ func New(name, version string, opts ...Option) *Plugin {
 	if v := os.Getenv("SERVICE_TOKEN"); v != "" {
 		cfg.serviceToken = v
 	}
+	if v := os.Getenv("PLUGIN_SIGNING_KEY"); v != "" {
+		key, err := parseSigningKey(v)
+		if err != nil {
+			panic("sdk: PLUGIN_SIGNING_KEY: " + err.Error())
+		}
+		cfg.signingKey = key
+	}
 
 	for _, opt := range opts {
 		opt(&cfg)

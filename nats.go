@@ -50,10 +50,7 @@ func (p *Plugin) connectNATS() error {
 // register sends the plugin registration to the CNAK backend via NATS request.
 // Retries up to 30 times with 2s delay to handle backend startup ordering.
 func (p *Plugin) register() {
-	reg := PluginRegistration{
-		Manifest: p.BuildManifest(),
-		URL:      p.pluginURL(),
-	}
+	reg := p.buildRegistration()
 	data, _ := json.Marshal(reg)
 
 	for i := 0; i < 30; i++ {
@@ -70,10 +67,7 @@ func (p *Plugin) register() {
 
 // startHeartbeat re-publishes the registration every 30 seconds.
 func (p *Plugin) startHeartbeat() {
-	reg := PluginRegistration{
-		Manifest: p.BuildManifest(),
-		URL:      p.pluginURL(),
-	}
+	reg := p.buildRegistration()
 	data, _ := json.Marshal(reg)
 
 	ticker := time.NewTicker(30 * time.Second)
@@ -94,10 +88,7 @@ func (p *Plugin) startHeartbeat() {
 
 // startDiscoveryListener subscribes to cnak.plugin.discover and re-announces.
 func (p *Plugin) startDiscoveryListener() {
-	reg := PluginRegistration{
-		Manifest: p.BuildManifest(),
-		URL:      p.pluginURL(),
-	}
+	reg := p.buildRegistration()
 	data, _ := json.Marshal(reg)
 
 	_, err := p.nc.Subscribe("cnak.plugin.discover", func(msg *nats.Msg) {
