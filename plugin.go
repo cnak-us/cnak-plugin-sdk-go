@@ -82,9 +82,17 @@ func New(name, version string, opts ...Option) *Plugin {
 func (p *Plugin) Run() error {
 	slog.Info("starting plugin", "name", p.name, "version", p.version, "port", p.config.port)
 
-	// Bootstrap NATS credentials if no auth is configured and backend is available.
-	// This handles JWT mode where plugins need scoped credentials issued dynamically.
+	// Register over HTTP, then bootstrap NATS credentials — in that order.
+	// The backend scopes a plugin's credentials to its registered manifest, so
+	// registration has to land before credentials are requested; doing it the
+	// other way round is the deadlock this ordering exists to avoid. Both are
+	// best-effort: a backend without these endpoints leaves the plugin exactly
+	// where it was before.
 	if !p.hasNATSAuth() && p.config.backendURL != "" && p.config.serviceToken != "" {
+		if err := p.registerOverHTTP(); err != nil {
+			slog.Warn("HTTP registration failed, credential bootstrap may be rejected",
+				"plugin", p.name, "error", err)
+		}
 		if err := p.bootstrapNATSCredentials(); err != nil {
 			slog.Warn("credential bootstrap failed, connecting without auth",
 				"plugin", p.name, "error", err)
